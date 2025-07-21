@@ -1,48 +1,61 @@
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from properties import Property
-from utils.saving import time_till_purchase, costs
-from utils.repayment import step, calculate_fixed_monthly_payment
-from utils.overpayments import calculate_overpayment
 import math
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from properties import Property
+from utils.saving import costs
+from utils.repayment import step, calculate_fixed_monthly_payment
+from utils.overpayments import calculate_overpayment
+
 """
-Step 1: save for a property
-Step 2: if there is a property:
-    - Save for a new property whilst paying off current property
-    - If the savings required for a new property is acheived, put all extra cash into paying off new property
-    - If the property reaches a 75% LTV before saving for a new property then only save for new property.
+Strategy Steps:
+1. Save for a property.
+2. If a property is owned:
+   - Save for a new property while paying off the current one.
+   - Once savings reach the required amount for the next property, switch all excess funds to mortgage overpayments.
+   - If the LTV of the current property reaches 75%, prioritize saving over overpaying.
 """
 
-def generate_property(next_property: str):
+def generate_property(next_property: str, deposit: float) -> Property:
+    """Creates a Property object with pre-defined values based on the property type."""
+    is_flat = next_property == "F"
+    property_value = 150000 if is_flat else 220000
+    deposit_amount = property_value * deposit
+    interest_rate = 0.06 if deposit == 0.05 else 0.05  # Simulating 2025 rates
+
     return Property(
-        property_value=150000 if next_property == "F" else 220000,
+        property_value=property_value,
         buy_to_let=False,
         mortgage_length=40,
-        is_flat=True if next_property == "F" else False,
+        is_flat=is_flat,
+        deposit=deposit_amount,
+        interest_rate=interest_rate,
     )
 
 def saving_vs_overpayment_allocation(
-        max_overpayment: int, 
-        current_property: Property, 
-        next_property: Property,
-        current_saving: int, 
-        overpayment_pct: float,
-        ):
-    if current_property.mortgage.mortgage_principal / current_property.property_value < 0.75:
-        saving = max_overpayment
-        overpayment_applied = 0
-    elif current_saving > costs(next_property, True, True) + next_property.mortgage.deposit:
-        saving = 0
-        overpayment_applied = max_overpayment
+    max_overpayment: int,
+    current_property: Property,
+    next_property: Property,
+    current_saving: int,
+    overpayment_pct: float
+):
+    """Determines how to allocate funds between saving and overpayment."""
+    current_ltv = current_property.mortgage.mortgage_principal / current_property.property_value
+    required_saving = costs(next_property, True, True) + next_property.mortgage.deposit
+
+    if current_ltv < 0.75:
+        return max_overpayment, 0
+    elif current_saving > required_saving:
+        return 0, max_overpayment
     else:
         overpayment_applied = math.floor(max_overpayment * overpayment_pct)
         saving = max_overpayment - overpayment_applied
-    return saving, overpayment_applied
+        return saving, overpayment_applied
 
 def append_history(history: list, month_number: int, current_saving: int, properties: list[Property]):
-        history.append({
+    """Stores monthly progress in the history log."""
+    history.append({
         "month": month_number,
         "savings": current_saving,
         "properties": [
@@ -50,164 +63,152 @@ def append_history(history: list, month_number: int, current_saving: int, proper
                 "value": p.property_value,
                 "mortgage_principal": p.mortgage.mortgage_principal,
                 "ltv": round(p.mortgage.mortgage_principal / p.property_value, 4)
-            } for p in properties
+            }
+            for p in properties
         ]
     })
 
-
-# This gets called if a property is owned
-def move_forward_one_month(        
-        income: int, 
-        current_saving: int,
-        overpayment_pct: float,
-        next_property: Property,
-        properties: list[Property],  #This will have the most recently purchased property, which is currently occupied
-        month_number: int,
-        history: list,
-    ):
+def move_forward_one_month(
+    income: int,
+    current_saving: int,
+    overpayment_pct: float,
+    next_property: Property,
+    properties: list[Property],
+    month_number: int,
+    history: list
+):
+    """Simulates one month of income allocation, repayment, and savings growth."""
     current_property = properties[-1]
     max_overpayment = calculate_overpayment(current_property, income)
-    # Allocate to either overpayment, or saving, or both
     saving, overpayment_applied = saving_vs_overpayment_allocation(
         max_overpayment, current_property, next_property, current_saving, overpayment_pct
     )
 
     current_saving += saving
-    fixed_monthly_payment = calculate_fixed_monthly_payment(current_property)
-    current_property = step(current_property, fixed_monthly_payment, overpayment_applied)
+    fixed_payment = calculate_fixed_monthly_payment(current_property)
+    current_property = step(current_property, fixed_payment, overpayment_applied)
     properties[-1] = current_property
 
     append_history(history, month_number, current_saving, properties)
 
     return properties, current_saving
 
-def purchase_first_property(next_property: str, current_saving: int, income: int, history: list):
-    # assuming before the purchase of the new property the person rents for 1000 a month
+def purchase_first_property(
+    next_property: str,
+    current_saving: int,
+    income: int,
+    history: list,
+    deposit: float
+):
+    """Simulates saving until the first property is affordable."""
     income_while_renting = income - 1000
-    properties = []
-    new_property = generate_property(next_property)
-    property_bought = False
-    cost = costs(new_property, True, True) + new_property.mortgage.deposit
+    new_property = generate_property(next_property, deposit)
+    total_cost = costs(new_property, True, True) + new_property.mortgage.deposit
+
     months = 0
-    while not property_bought:
+    properties = []
+
+    while current_saving < total_cost:
         current_saving += income_while_renting
         months += 1
-        
-        if cost < current_saving:
-            property_bought = True
-            current_saving -= cost
-            properties = [new_property]
-
         append_history(history, months, current_saving, properties)
-        
-    return months, [new_property], current_saving
 
-def balance_after_property_purchase(next_property: Property, current_saving):
-    cost = costs(next_property, False, True)
-    new_cash_balance = current_saving - cost - next_property.mortgage.deposit
-    return  new_cash_balance
+    current_saving -= total_cost
+    properties = [new_property]
+    append_history(history, months, current_saving, properties)
 
-# This will move forward n months until the second property is bought
-# Returning the properties and the money saved at the time and the number of months
+    return months, properties, current_saving
+
+def balance_after_property_purchase(next_property: Property, current_saving: int) -> float:
+    """Returns the balance after purchasing a property."""
+    total_cost = costs(next_property, False, True) + next_property.mortgage.deposit
+    return current_saving - total_cost
+
 def move_forward_n_months(
-        income: int, 
-        current_saving: int,
-        overpayment_pct: float,
-        next_property: str,
-        properties: list[Property],
-        months_passed: int,
-        history: list,
+    income: int,
+    current_saving: int,
+    overpayment_pct: float,
+    next_property: str,
+    properties: list[Property],
+    months_passed: int,
+    history: list,
+    deposit: float
 ):
-    l = len(properties)
-    if l != 0:
-        next_prop = generate_property(next_property)
-        focal_property = properties[-1]
-        focal_property_LTV = focal_property.mortgage.mortgage_principal / focal_property.property_value
-        #while loop depends on if the property can be purchased and the most recent property reaches a 75% or less LTV
-        while balance_after_property_purchase(next_prop, current_saving) < 0 or focal_property_LTV > 0.75:
-            months_passed +=1
-            properties, current_saving = move_forward_one_month( #change this to return properties
-                income, 
-                current_saving,
-                overpayment_pct,
-                next_prop,
-                properties,
-                months_passed,
-                history,
-                )
-            
-            focal_property = properties[-1]
-            focal_property_LTV = focal_property.mortgage.mortgage_principal / focal_property.property_value
+    """Simulates months of progress until the next property is affordable."""
+    if not properties:
+        return purchase_first_property(next_property, current_saving, income, history, deposit)
 
-        current_saving = balance_after_property_purchase(next_prop, current_saving)
-        properties.append(next_prop)
-        
-        # The code above is wrong, the while loop needs to stop when I can afford the next property, and then the savings need to be adjust as something was bought.
-        return months_passed, properties, current_saving
-    else:
-        return purchase_first_property(next_property, current_saving, income, history)
+    next_prop = generate_property(next_property, deposit)
+    current_property = properties[-1]
 
+    while balance_after_property_purchase(next_prop, current_saving) < 0 or \
+          current_property.mortgage.mortgage_principal / current_property.property_value > 0.75:
 
-# Income will be the amount of money that can be used for property purposes
-# For more information about strategy see ../../strategies/notes.py
-# Overpayment will be the amount of extra money that can be contributed to 
-# overpayment vs saving for a new property (e.gs 1.0 -> 100% of extra income towards overpayment,
-# 0.6 -> 60% of extra income towards overpayment and 40% towards saving for a new property)
+        months_passed += 1
+        properties, current_saving = move_forward_one_month(
+            income,
+            current_saving,
+            overpayment_pct,
+            next_prop,
+            properties,
+            months_passed,
+            history,
+        )
+        current_property = properties[-1]
+
+    current_saving = balance_after_property_purchase(next_prop, current_saving)
+    properties.append(next_prop)
+
+    return months_passed, properties, current_saving
+
 def test_strategy(
-        income: int, 
-        current_saving: int,
-        overpayment_pct: float,
-        strategy: str,
-        ):
+    income: int,
+    current_saving: int,
+    overpayment_pct: float,
+    strategy: str,
+    deposit: float
+):
+    """Main simulation entry point for a 2-property strategy."""
     months_passed = 0
-    properties: list[Property] = []
+    properties = []
     history = []
 
-    # Buy first property
-    months_passed, properties, new_cash_bal = move_forward_n_months(
-        income, 
-        current_saving,
-        overpayment_pct,
-        strategy[0],
-        properties,
-        months_passed,
-        history,
-    )
+    for prop_type in strategy:
+        months_passed, properties, current_saving = move_forward_n_months(
+            income,
+            current_saving,
+            overpayment_pct,
+            prop_type,
+            properties,
+            months_passed,
+            history,
+            deposit,
+        )
 
-    # Buy second property
-    months_passed, properties, new_cash_bal = move_forward_n_months(
-        income, 
-        new_cash_bal, 
-        overpayment_pct,
-        strategy[1], 
-        properties, 
-        months_passed,
-        history,
-    )
-
-    total_net_assets = 0
-    for property in properties:
-        total_net_assets += property.property_value - property.mortgage.mortgage_principal
-    total_net_assets += new_cash_bal
+    total_net_assets = sum(p.property_value - p.mortgage.mortgage_principal for p in properties)
+    total_net_assets += current_saving
 
     return months_passed, total_net_assets, history
 
 if __name__ == "__main__":
     income = 1800
-    current_saving = 10000
+    current_saving = 5000
     overpayment_pct = 0.75
     strategy = "FF"
+    deposit = 0.05
 
-    months_passed, total_net_assets, history = test_strategy(
+    months_passed, net_assets, history = test_strategy(
         income,
         current_saving,
         overpayment_pct,
         strategy,
+        deposit,
     )
 
     print(f"Total months: {months_passed}")
-    print(f"Net assets: £{total_net_assets:,.2f}")
+    print(f"Net assets: £{net_assets:,.2f}")
+
     for month in history:
         print(month)
 
-    # problem: the cost of moving into a new place if considered, but not the cost of letting off a property initally
+    # TODO: Factor in the cost of letting out the original property after moving to a new one.

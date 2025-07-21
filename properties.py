@@ -21,17 +21,13 @@ class Property:
             mortgage_length: int, 
             is_flat: bool,
             years_complete: int = 0, 
-            months_complete: int = 0
+            months_complete: int = 0,
+            deposit: float = 0.1,
+            interest_rate: float = 0.05
         ):
         self.property_value = property_value
         self.buy_to_let = buy_to_let
         self.is_flat = is_flat
-        if buy_to_let:
-            deposit = int(property_value * 0.25)
-            interest_rate = 0.052
-        else:
-            deposit = int(property_value * 0.10)
-            interest_rate = 0.05
         mortgage_principal_init = property_value - deposit
         mortgage_principal = mortgage_principal_init
         self.mortgage = Mortgage(
@@ -77,14 +73,16 @@ flat = Property(
     property_value=150000,
     buy_to_let=False,
     mortgage_length=40,
-    is_flat=True
+    is_flat=True,
+    deposit = 0.1,
 )
 
 house = Property(
     property_value=220000,
     buy_to_let=False,
     mortgage_length=40,
-    is_flat=False
+    is_flat=False,
+    deposit = 0.1,
 )
 
 flat_buy_to_let = Property(

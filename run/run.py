@@ -1,37 +1,59 @@
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from properties import Property
+
 from strategies.simulation import test_strategy
 
-def run(initial_ltvs: list[float], overpayment_pcts: list[float], strategies: list[str]):
-    income = 1800
-    current_saving = 5000
 
-    optimal_time = 1000000
-    best_strategy = ""
-    best_overpayment_pcts = []
+def find_optimal_strategy(deposit_rates: list[float], overpayment_rates: list[float], strategy_codes: list[str]):
+    monthly_income = 1800
+    initial_savings = 5000
 
-    # for initial_ltv in range(initial_ltvs):   TODO: Test buying with different LTVs
-    for strategy in strategies:
-        for overpayment_pct in overpayment_pcts:
-            months_passed, total_net_assets, history = test_strategy(income, current_saving, overpayment_pct, strategy)
-            print(overpayment_pct, strategy, months_passed)
+    best_months = float('inf')
+    best_strategy = None
+    best_overpayment = None
+    best_deposit = None
+    highest_assets = float('-inf')
 
-            if months_passed < optimal_time:
-                optimal_time = months_passed
-                best_strategy = strategy
-                best_overpayment_pcts = [overpayment_pct]
-            if months_passed == optimal_time and strategy == best_strategy:
-                best_overpayment_pcts.append(overpayment_pct)
-    
-    return optimal_time, best_strategy, best_overpayment_pcts
+    for deposit in deposit_rates:
+        for strategy in strategy_codes:
+            for overpayment in overpayment_rates:
+                months, net_assets, _ = test_strategy(
+                    income=monthly_income,
+                    current_saving=initial_savings,
+                    overpayment_pct=overpayment,
+                    strategy=strategy,
+                    deposit=deposit
+                )
+
+                print(f"Tested - Strategy: {strategy}, Overpayment: {overpayment:.2f}, Months: {months}, Deposit: {deposit * 100}%")
+
+                is_better = (
+                    months < best_months or
+                    (months == best_months and net_assets > highest_assets)
+                )
+
+                if is_better:
+                    best_months = months
+                    best_strategy = strategy
+                    best_overpayment = overpayment
+                    best_deposit = deposit
+                    highest_assets = net_assets
+
+    return best_months, best_strategy, best_overpayment, best_deposit, highest_assets
 
 
 if __name__ == "__main__":
-    initial_ltvs = [0.05, 0.06, 0.07, 0.08, 0.09, 0.1]
-    overpayment_pcts = [i/100 for i in range(0, 101)]
-    strategies = ['HH', 'FF', 'HF', 'FH']
-    optimal_time, best_strategy, best_overpayment_pct = run(initial_ltvs, overpayment_pcts, strategies)
+    deposit_options = [0.05, 0.10]
+    overpayment_options = [i / 100 for i in range(0, 101)]
+    strategy_options = ['HH', 'FF', 'HF', 'FH']
 
-    print(best_overpayment_pct, best_strategy, optimal_time)
+    result = find_optimal_strategy(deposit_options, overpayment_options, strategy_options)
+
+    print("\nOptimal Strategy Found:")
+    print(f"  Strategy:            {result[1]}")
+    print(f"  Overpayment Rate:    {result[2]:.2f}")
+    print(f"  Deposit Rate:        {result[3]:.2f}")
+    print(f"  Months to Complete:  {result[0]}")
+    print(f"  Net Assets Achieved: {result[4]:,.2f}")
