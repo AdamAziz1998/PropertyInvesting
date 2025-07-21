@@ -42,7 +42,7 @@ def saving_vs_overpayment_allocation(
 ):
     """Determines how to allocate funds between saving and overpayment."""
     current_ltv = current_property.mortgage.mortgage_principal / current_property.property_value
-    required_saving = costs(next_property, True, True) + next_property.mortgage.deposit
+    required_saving = costs(next_property, False, True) + next_property.mortgage.deposit
 
     if current_ltv < 0.75:
         return max_overpayment, 0
@@ -115,7 +115,6 @@ def purchase_first_property(
 
     current_saving -= total_cost
     properties = [new_property]
-    append_history(history, months, current_saving, properties)
 
     return months, properties, current_saving
 
@@ -195,7 +194,7 @@ if __name__ == "__main__":
     current_saving = 5000
     overpayment_pct = 0.75
     strategy = "FF"
-    deposit = 0.05
+    deposit = 0.1
 
     months_passed, net_assets, history = test_strategy(
         income,
@@ -205,10 +204,9 @@ if __name__ == "__main__":
         deposit,
     )
 
-    print(f"Total months: {months_passed}")
-    print(f"Net assets: £{net_assets:,.2f}")
-
     for month in history:
         print(month)
 
+    print(f"Total months: {months_passed}")
+    print(f"Net assets: £{net_assets:,.2f}")
     # TODO: Factor in the cost of letting out the original property after moving to a new one.
