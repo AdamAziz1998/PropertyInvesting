@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from properties import Property, flat_first_property
+from properties import Property, flat
 import numpy as np
 from typing import Tuple
 
@@ -25,13 +25,13 @@ def calculate_interest(property: Property):
     # epsilon applied to consistently round up when using number ending in 0.5
     return int(np.round(property.mortgage.mortgage_principal * monthly_interest_rate + epsilon))
 
-def step(property: Property, fixed_monthly_payment: float, overpay: int = 0) -> Tuple[int, int]:
+def step(property: Property, fixed_monthly_payment: float, overpay: int = 0) -> Property:
     """
     Simulate one month of mortgage repayment using a fixed monthly payment plus optional overpayment.
     Returns interest and principal paid for the month.
     """
     if property.mortgage.mortgage_principal <= 0:
-        return 0, 0
+        return property
 
     interest = calculate_interest(property)
     total_payment = fixed_monthly_payment + overpay
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     import copy
 
     # Clone the property to avoid modifying global
-    prop = copy.deepcopy(flat_first_property)
+    prop = copy.deepcopy(flat)
 
     fixed_payment = calculate_fixed_monthly_payment(prop)
     maintenance = prop.property_value * 0.01 / 12
@@ -92,7 +92,3 @@ if __name__ == "__main__":
 
     months = time_to_loan_to_value(prop, 0.75, fixed_payment, overpay_amount)
     print(f"Months to reach 75% LTV: {months}")
-
-    # Optionally: inspect final state
-    # import json
-    # print(json.dumps(prop.to_dict(), indent=2))

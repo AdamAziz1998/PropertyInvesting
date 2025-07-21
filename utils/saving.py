@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from properties import Property, flat_first_property
+from properties import Property
 import copy
 import math
 
@@ -61,11 +61,3 @@ def time_till_purchase(
     months = (cost + deposit - current_savings) / saved_per_month
 
     return math.ceil(months)
-
-if __name__ == "__main__":
-    prop = copy.deepcopy(flat_first_property)
-
-    current_savings = 10500
-    saved_per_month = 800
-    
-    print(time_till_purchase(current_savings, saved_per_month, prop))
